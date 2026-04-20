@@ -184,10 +184,11 @@ recv_wait_multi(self, count, ...)
         mXPUSHu((UV)id);
     }
     /* Grab up to count-1 more non-blocking */
+    int last_r2 = 0;
     reqrep_mutex_lock(h->hdr);
     for (UV i = 1; i < count; i++) {
-        int r2 = reqrep_recv_locked(h, &str, &len, &utf8, &id);
-        if (r2 <= 0) break;
+        last_r2 = reqrep_recv_locked(h, &str, &len, &utf8, &id);
+        if (last_r2 <= 0) break;
         SV *sv = newSVpvn(str, len);
         if (utf8) SvUTF8_on(sv);
         mXPUSHs(sv);
@@ -195,6 +196,7 @@ recv_wait_multi(self, count, ...)
     }
     reqrep_mutex_unlock(h->hdr);
     reqrep_wake_producers(h->hdr);
+    if (last_r2 == -1) croak("Data::ReqRep::Shared: out of memory");
 
 void
 drain(self, ...)
@@ -208,10 +210,11 @@ drain(self, ...)
     uint32_t max_count;
   PPCODE:
     max_count = (items > 1) ? (uint32_t)SvUV(ST(1)) : UINT32_MAX;
+    int last_r = 0;
     reqrep_mutex_lock(h->hdr);
     while (max_count-- > 0) {
-        int r = reqrep_recv_locked(h, &str, &len, &utf8, &id);
-        if (r <= 0) break;
+        last_r = reqrep_recv_locked(h, &str, &len, &utf8, &id);
+        if (last_r <= 0) break;
         SV *sv = newSVpvn(str, len);
         if (utf8) SvUTF8_on(sv);
         mXPUSHs(sv);
@@ -219,6 +222,7 @@ drain(self, ...)
     }
     reqrep_mutex_unlock(h->hdr);
     reqrep_wake_producers(h->hdr);
+    if (last_r == -1) croak("Data::ReqRep::Shared: out of memory");
 
 bool
 reply(self, id, value)
@@ -337,15 +341,15 @@ stats(self)
     hv_store(hv, "resp_data_max", 13, newSVuv(h->resp_data_max), 0);
     hv_store(hv, "mmap_size", 9, newSVuv((UV)h->mmap_size), 0);
     hv_store(hv, "arena_cap", 9, newSVuv(h->req_arena_cap), 0);
-    hv_store(hv, "arena_used", 10, newSVuv(hdr->arena_used), 0);
-    hv_store(hv, "requests", 8, newSVuv((UV)hdr->stat_requests), 0);
-    hv_store(hv, "replies", 7, newSVuv((UV)hdr->stat_replies), 0);
-    hv_store(hv, "send_full", 9, newSVuv((UV)hdr->stat_send_full), 0);
-    hv_store(hv, "recv_empty", 10, newSVuv(hdr->stat_recv_empty), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(hdr->stat_recoveries), 0);
-    hv_store(hv, "recv_waiters", 12, newSVuv(hdr->recv_waiters), 0);
-    hv_store(hv, "send_waiters", 12, newSVuv(hdr->send_waiters), 0);
-    hv_store(hv, "slot_waiters", 12, newSVuv(hdr->slot_waiters), 0);
+    hv_store(hv, "arena_used", 10, newSVuv(__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "requests", 8, newSVuv((UV)__atomic_load_n(&hdr->stat_requests, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_full", 9, newSVuv((UV)__atomic_load_n(&hdr->stat_send_full, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_empty", 10, newSVuv(__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_waiters", 12, newSVuv(__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_waiters", 12, newSVuv(__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "slot_waiters", 12, newSVuv(__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
@@ -514,7 +518,7 @@ send(self, value)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_try_send(h, str, (uint32_t)len, utf8, &id);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     RETVAL = (r == 1) ? newSVuv((UV)id) : &PL_sv_undef;
   OUTPUT:
     RETVAL
@@ -533,7 +537,7 @@ send_wait(self, value, ...)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_send_wait(h, str, (uint32_t)len, utf8, &id, timeout);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     RETVAL = (r == 1) ? newSVuv((UV)id) : &PL_sv_undef;
   OUTPUT:
     RETVAL
@@ -550,7 +554,7 @@ send_notify(self, value)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_try_send(h, str, (uint32_t)len, utf8, &id);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     if (r == 1) {
         reqrep_notify(h);
         RETVAL = newSVuv((UV)id);
@@ -574,7 +578,7 @@ send_wait_notify(self, value, ...)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_send_wait(h, str, (uint32_t)len, utf8, &id, timeout);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     if (r == 1) {
         reqrep_notify(h);
         RETVAL = newSVuv((UV)id);
@@ -644,7 +648,7 @@ req(self, value)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_request(h, str, (uint32_t)len, utf8, &out_str, &out_len, &out_utf8, -1);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     if (r == 1) {
         RETVAL = newSVpvn(out_str, out_len);
         if (out_utf8) SvUTF8_on(RETVAL);
@@ -669,7 +673,7 @@ req_wait(self, value, timeout)
     const char *str = SvPV(value, len);
     bool utf8 = SvUTF8(value) ? true : false;
     int r = reqrep_request(h, str, (uint32_t)len, utf8, &out_str, &out_len, &out_utf8, timeout);
-    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (max 2GB)");
+    if (r == -2) croak("Data::ReqRep::Shared::Client: request too long (exceeds arena capacity or 2GB mask)");
     if (r == 1) {
         RETVAL = newSVpvn(out_str, out_len);
         if (out_utf8) SvUTF8_on(RETVAL);
@@ -722,15 +726,15 @@ stats(self)
     hv_store(hv, "resp_data_max", 13, newSVuv(h->resp_data_max), 0);
     hv_store(hv, "mmap_size", 9, newSVuv((UV)h->mmap_size), 0);
     hv_store(hv, "arena_cap", 9, newSVuv(h->req_arena_cap), 0);
-    hv_store(hv, "arena_used", 10, newSVuv(hdr->arena_used), 0);
-    hv_store(hv, "requests", 8, newSVuv((UV)hdr->stat_requests), 0);
-    hv_store(hv, "replies", 7, newSVuv((UV)hdr->stat_replies), 0);
-    hv_store(hv, "send_full", 9, newSVuv((UV)hdr->stat_send_full), 0);
-    hv_store(hv, "recv_empty", 10, newSVuv(hdr->stat_recv_empty), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(hdr->stat_recoveries), 0);
-    hv_store(hv, "recv_waiters", 12, newSVuv(hdr->recv_waiters), 0);
-    hv_store(hv, "send_waiters", 12, newSVuv(hdr->send_waiters), 0);
-    hv_store(hv, "slot_waiters", 12, newSVuv(hdr->slot_waiters), 0);
+    hv_store(hv, "arena_used", 10, newSVuv(__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "requests", 8, newSVuv((UV)__atomic_load_n(&hdr->stat_requests, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_full", 9, newSVuv((UV)__atomic_load_n(&hdr->stat_send_full, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_empty", 10, newSVuv(__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_waiters", 12, newSVuv(__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_waiters", 12, newSVuv(__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "slot_waiters", 12, newSVuv(__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
@@ -1037,10 +1041,10 @@ stats(self)
     hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "send_full", 9, newSVuv((UV)__atomic_load_n(&hdr->stat_send_full, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "recv_empty", 10, newSVuv(__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(hdr->stat_recoveries), 0);
-    hv_store(hv, "send_waiters", 12, newSVuv(hdr->send_waiters), 0);
-    hv_store(hv, "recv_waiters", 12, newSVuv(hdr->recv_waiters), 0);
-    hv_store(hv, "slot_waiters", 12, newSVuv(hdr->slot_waiters), 0);
+    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_waiters", 12, newSVuv(__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_waiters", 12, newSVuv(__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "slot_waiters", 12, newSVuv(__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
@@ -1387,7 +1391,7 @@ stats(self)
     hv_store(hv, "resp_slots", 10, newSVuv(h->resp_slots), 0);
     hv_store(hv, "requests", 8, newSVuv((UV)__atomic_load_n(&hdr->stat_requests, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(hdr->stat_recoveries), 0);
+    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
