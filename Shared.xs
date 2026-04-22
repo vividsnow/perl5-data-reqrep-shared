@@ -147,19 +147,40 @@ recv_multi(self, count)
     uint64_t id;
     bool utf8;
   PPCODE:
+    /* Hoist Perl SV construction out of process-shared futex mutex. */
+    struct { char *buf; uint32_t len; uint64_t id; bool utf8; } *items_buf = NULL;
+    UV n = 0;
     int last_r = 0;
+    int oom = 0;
+    if (count > 0) {
+        items_buf = (void *)malloc((size_t)count * sizeof(*items_buf));
+        if (!items_buf) croak("Data::ReqRep::Shared: out of memory");
+    }
     reqrep_mutex_lock(h->hdr);
     for (UV i = 0; i < count; i++) {
         last_r = reqrep_recv_locked(h, &str, &len, &utf8, &id);
         if (last_r <= 0) break;
-        SV *sv = newSVpvn(str, len);
-        if (utf8) SvUTF8_on(sv);
-        mXPUSHs(sv);
-        mXPUSHu((UV)id);
+        char *c = (char *)malloc(len ? len : 1);
+        if (!c) { oom = 1; break; }
+        if (len) memcpy(c, str, len);
+        items_buf[n].buf = c;
+        items_buf[n].len = len;
+        items_buf[n].id = id;
+        items_buf[n].utf8 = utf8;
+        n++;
     }
     reqrep_mutex_unlock(h->hdr);
     reqrep_wake_producers(h->hdr);
-    if (last_r == -1) croak("Data::ReqRep::Shared: out of memory");
+    EXTEND(SP, (SSize_t)(2 * n));
+    for (UV j = 0; j < n; j++) {
+        SV *sv = newSVpvn(items_buf[j].buf, items_buf[j].len);
+        if (items_buf[j].utf8) SvUTF8_on(sv);
+        PUSHs(sv_2mortal(sv));
+        PUSHs(sv_2mortal(newSVuv((UV)items_buf[j].id)));
+        free(items_buf[j].buf);
+    }
+    free(items_buf);
+    if (last_r == -1 || oom) croak("Data::ReqRep::Shared: out of memory");
 
 void
 recv_wait_multi(self, count, ...)
@@ -184,20 +205,40 @@ recv_wait_multi(self, count, ...)
         mXPUSHs(sv);
         mXPUSHu((UV)id);
     }
-    /* Grab up to count-1 more non-blocking */
+    /* Grab up to count-1 more non-blocking — hoist SV construction out of lock. */
+    struct { char *buf; uint32_t len; uint64_t id; bool utf8; } *items_buf = NULL;
+    UV n = 0;
     int last_r2 = 0;
+    int oom = 0;
+    if (count > 1) {
+        items_buf = (void *)malloc((size_t)(count - 1) * sizeof(*items_buf));
+        if (!items_buf) croak("Data::ReqRep::Shared: out of memory");
+    }
     reqrep_mutex_lock(h->hdr);
     for (UV i = 1; i < count; i++) {
         last_r2 = reqrep_recv_locked(h, &str, &len, &utf8, &id);
         if (last_r2 <= 0) break;
-        SV *sv = newSVpvn(str, len);
-        if (utf8) SvUTF8_on(sv);
-        mXPUSHs(sv);
-        mXPUSHu((UV)id);
+        char *c = (char *)malloc(len ? len : 1);
+        if (!c) { oom = 1; break; }
+        if (len) memcpy(c, str, len);
+        items_buf[n].buf = c;
+        items_buf[n].len = len;
+        items_buf[n].id = id;
+        items_buf[n].utf8 = utf8;
+        n++;
     }
     reqrep_mutex_unlock(h->hdr);
     reqrep_wake_producers(h->hdr);
-    if (last_r2 == -1) croak("Data::ReqRep::Shared: out of memory");
+    EXTEND(SP, (SSize_t)(2 * n));
+    for (UV j = 0; j < n; j++) {
+        SV *sv = newSVpvn(items_buf[j].buf, items_buf[j].len);
+        if (items_buf[j].utf8) SvUTF8_on(sv);
+        PUSHs(sv_2mortal(sv));
+        PUSHs(sv_2mortal(newSVuv((UV)items_buf[j].id)));
+        free(items_buf[j].buf);
+    }
+    free(items_buf);
+    if (last_r2 == -1 || oom) croak("Data::ReqRep::Shared: out of memory");
 
 void
 drain(self, ...)
@@ -211,19 +252,37 @@ drain(self, ...)
     uint32_t max_count;
   PPCODE:
     max_count = (items > 1) ? (uint32_t)SvUV(ST(1)) : UINT32_MAX;
+    /* Hoist SV construction out of the mutex (see recv_multi). */
+    struct drain_item { char *buf; uint32_t len; uint64_t id; bool utf8; struct drain_item *next; } *drained_head = NULL, *drained_tail = NULL;
+    UV drained_n = 0;
     int last_r = 0;
+    int oom = 0;
     reqrep_mutex_lock(h->hdr);
     while (max_count-- > 0) {
         last_r = reqrep_recv_locked(h, &str, &len, &utf8, &id);
         if (last_r <= 0) break;
-        SV *sv = newSVpvn(str, len);
-        if (utf8) SvUTF8_on(sv);
-        mXPUSHs(sv);
-        mXPUSHu((UV)id);
+        struct drain_item *it = (struct drain_item *)malloc(sizeof(*it));
+        char *c = (char *)malloc(len ? len : 1);
+        if (!it || !c) { free(it); free(c); oom = 1; break; }
+        if (len) memcpy(c, str, len);
+        it->buf = c; it->len = len; it->id = id; it->utf8 = utf8; it->next = NULL;
+        if (drained_tail) drained_tail->next = it; else drained_head = it;
+        drained_tail = it;
+        drained_n++;
     }
     reqrep_mutex_unlock(h->hdr);
     reqrep_wake_producers(h->hdr);
-    if (last_r == -1) croak("Data::ReqRep::Shared: out of memory");
+    EXTEND(SP, (SSize_t)(2 * drained_n));
+    while (drained_head) {
+        struct drain_item *it = drained_head; drained_head = it->next;
+        SV *sv = newSVpvn(it->buf, it->len);
+        if (it->utf8) SvUTF8_on(sv);
+        PUSHs(sv_2mortal(sv));
+        PUSHs(sv_2mortal(newSVuv((UV)it->id)));
+        free(it->buf);
+        free(it);
+    }
+    if (last_r == -1 || oom) croak("Data::ReqRep::Shared: out of memory");
 
 bool
 reply(self, id, value)
@@ -1265,7 +1324,7 @@ get(self, id)
     int64_t value;
   CODE:
     int r = reqrep_int_try_get(h, (uint64_t)id, &value);
-    if (r == -1) croak("invalid slot index");
+    if (r == -1) croak("Data::ReqRep::Shared::Int::Client: invalid slot index");
     RETVAL = (r == 1) ? newSViv((IV)value) : &PL_sv_undef;
   OUTPUT:
     RETVAL
@@ -1281,7 +1340,7 @@ get_wait(self, id, ...)
   CODE:
     if (items > 2) timeout = SvNV(ST(2));
     int r = reqrep_int_get_wait(h, (uint64_t)id, &value, timeout);
-    if (r == -1) croak("invalid slot index");
+    if (r == -1) croak("Data::ReqRep::Shared::Int::Client: invalid slot index");
     RETVAL = (r == 1) ? newSViv((IV)value) : &PL_sv_undef;
   OUTPUT:
     RETVAL
