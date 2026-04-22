@@ -62,3 +62,14 @@ jobs:
         run: |
           ASAN_LIB=$(cc -print-file-name=libasan.so)
           LD_PRELOAD=$ASAN_LIB ASAN_OPTIONS=detect_leaks=0 make test
+
+  test-arm:
+    runs-on: ubuntu-24.04-arm
+    name: ARM64 / Linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shogo82148/actions-setup-perl@v1
+        with:
+          perl-version: '5.40'
+      - run: cpanm -n Devel::PPPort
+      - run: perl Makefile.PL && make && make test
