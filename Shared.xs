@@ -89,9 +89,10 @@ memfd(self)
 void
 DESTROY(self)
     SV *self
-  PREINIT:
-    EXTRACT_HANDLE("Data::ReqRep::Shared", self);
   CODE:
+    if (!SvROK(self)) return;
+    ReqRepHandle *h = INT2PTR(ReqRepHandle*, SvIV(SvRV(self)));
+    if (!h) return;
     sv_setiv(SvRV(self), 0);
     reqrep_destroy(h);
 
@@ -341,15 +342,15 @@ stats(self)
     hv_store(hv, "resp_data_max", 13, newSVuv(h->resp_data_max), 0);
     hv_store(hv, "mmap_size", 9, newSVuv((UV)h->mmap_size), 0);
     hv_store(hv, "arena_cap", 9, newSVuv(h->req_arena_cap), 0);
-    hv_store(hv, "arena_used", 10, newSVuv(__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "arena_used", 10, newSVuv((UV)__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "requests", 8, newSVuv((UV)__atomic_load_n(&hdr->stat_requests, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "send_full", 9, newSVuv((UV)__atomic_load_n(&hdr->stat_send_full, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recv_empty", 10, newSVuv(__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recv_waiters", 12, newSVuv(__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "send_waiters", 12, newSVuv(__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "slot_waiters", 12, newSVuv(__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_empty", 10, newSVuv((UV)__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recoveries", 10, newSVuv((UV)__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "slot_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
@@ -500,9 +501,10 @@ memfd(self)
 void
 DESTROY(self)
     SV *self
-  PREINIT:
-    EXTRACT_HANDLE("Data::ReqRep::Shared::Client", self);
   CODE:
+    if (!SvROK(self)) return;
+    ReqRepHandle *h = INT2PTR(ReqRepHandle*, SvIV(SvRV(self)));
+    if (!h) return;
     sv_setiv(SvRV(self), 0);
     reqrep_destroy(h);
 
@@ -726,15 +728,15 @@ stats(self)
     hv_store(hv, "resp_data_max", 13, newSVuv(h->resp_data_max), 0);
     hv_store(hv, "mmap_size", 9, newSVuv((UV)h->mmap_size), 0);
     hv_store(hv, "arena_cap", 9, newSVuv(h->req_arena_cap), 0);
-    hv_store(hv, "arena_used", 10, newSVuv(__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "arena_used", 10, newSVuv((UV)__atomic_load_n(&hdr->arena_used, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "requests", 8, newSVuv((UV)__atomic_load_n(&hdr->stat_requests, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "replies", 7, newSVuv((UV)__atomic_load_n(&hdr->stat_replies, __ATOMIC_RELAXED)), 0);
     hv_store(hv, "send_full", 9, newSVuv((UV)__atomic_load_n(&hdr->stat_send_full, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recv_empty", 10, newSVuv(__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recoveries", 10, newSVuv(__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "recv_waiters", 12, newSVuv(__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "send_waiters", 12, newSVuv(__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
-    hv_store(hv, "slot_waiters", 12, newSVuv(__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_empty", 10, newSVuv((UV)__atomic_load_n(&hdr->stat_recv_empty, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recoveries", 10, newSVuv((UV)__atomic_load_n(&hdr->stat_recoveries, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "recv_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->recv_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "send_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->send_waiters, __ATOMIC_RELAXED)), 0);
+    hv_store(hv, "slot_waiters", 12, newSVuv((UV)__atomic_load_n(&hdr->slot_waiters, __ATOMIC_RELAXED)), 0);
     RETVAL = newRV_noinc((SV *)hv);
   OUTPUT:
     RETVAL
@@ -917,9 +919,10 @@ memfd(self)
 void
 DESTROY(self)
     SV *self
-  PREINIT:
-    EXTRACT_HANDLE("Data::ReqRep::Shared::Int", self);
   CODE:
+    if (!SvROK(self)) return;
+    ReqRepHandle *h = INT2PTR(ReqRepHandle*, SvIV(SvRV(self)));
+    if (!h) return;
     sv_setiv(SvRV(self), 0);
     reqrep_destroy(h);
 
@@ -1218,9 +1221,10 @@ memfd(self)
 void
 DESTROY(self)
     SV *self
-  PREINIT:
-    EXTRACT_HANDLE("Data::ReqRep::Shared::Int::Client", self);
   CODE:
+    if (!SvROK(self)) return;
+    ReqRepHandle *h = INT2PTR(ReqRepHandle*, SvIV(SvRV(self)));
+    if (!h) return;
     sv_setiv(SvRV(self), 0);
     reqrep_destroy(h);
 
