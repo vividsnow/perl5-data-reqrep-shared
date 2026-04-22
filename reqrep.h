@@ -1173,11 +1173,11 @@ static inline void reqrep_notify(ReqRepHandle *h) {
     }
 }
 
-static inline void reqrep_eventfd_consume(ReqRepHandle *h) {
-    if (h->notify_fd >= 0) {
-        uint64_t val;
-        ssize_t __attribute__((unused)) rc = read(h->notify_fd, &val, sizeof(val));
-    }
+static inline int64_t reqrep_eventfd_consume(ReqRepHandle *h) {
+    if (h->notify_fd < 0) return -1;
+    uint64_t val = 0;
+    if (read(h->notify_fd, &val, sizeof(val)) != sizeof(val)) return -1;
+    return (int64_t)val;
 }
 
 static inline int reqrep_reply_eventfd_create(ReqRepHandle *h) {
@@ -1199,11 +1199,11 @@ static inline void reqrep_reply_notify(ReqRepHandle *h) {
     }
 }
 
-static inline void reqrep_reply_eventfd_consume(ReqRepHandle *h) {
-    if (h->reply_fd >= 0) {
-        uint64_t val;
-        ssize_t __attribute__((unused)) rc = read(h->reply_fd, &val, sizeof(val));
-    }
+static inline int64_t reqrep_reply_eventfd_consume(ReqRepHandle *h) {
+    if (h->reply_fd < 0) return -1;
+    uint64_t val = 0;
+    if (read(h->reply_fd, &val, sizeof(val)) != sizeof(val)) return -1;
+    return (int64_t)val;
 }
 
 /* ================================================================

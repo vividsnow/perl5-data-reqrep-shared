@@ -453,13 +453,16 @@ fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared", self);
   CODE:
-    reqrep_eventfd_consume(h);
+    int64_t v = reqrep_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 notify(self)
@@ -499,13 +502,16 @@ reply_fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 reply_eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared", self);
   CODE:
-    reqrep_reply_eventfd_consume(h);
+    int64_t v = reqrep_reply_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 reply_notify(self)
@@ -880,13 +886,16 @@ fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared::Client", self);
   CODE:
-    reqrep_reply_eventfd_consume(h);
+    int64_t v = reqrep_reply_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 notify(self)
@@ -1157,13 +1166,16 @@ fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared::Int", self);
   CODE:
-    reqrep_eventfd_consume(h);
+    int64_t v = reqrep_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 notify(self)
@@ -1203,13 +1215,16 @@ reply_fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 reply_eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared::Int", self);
   CODE:
-    reqrep_reply_eventfd_consume(h);
+    int64_t v = reqrep_reply_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 reply_notify(self)
@@ -1499,13 +1514,16 @@ fileno(self)
   OUTPUT:
     RETVAL
 
-void
+SV *
 eventfd_consume(self)
     SV *self
   PREINIT:
     EXTRACT_HANDLE("Data::ReqRep::Shared::Int::Client", self);
   CODE:
-    reqrep_reply_eventfd_consume(h);
+    int64_t v = reqrep_reply_eventfd_consume(h);
+    RETVAL = (v >= 0) ? newSViv((IV)v) : &PL_sv_undef;
+  OUTPUT:
+    RETVAL
 
 void
 notify(self)
