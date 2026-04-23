@@ -946,6 +946,28 @@ static int reqrep_reply(ReqRepHandle *h, uint64_t id,
             0, __ATOMIC_RELEASE, __ATOMIC_RELAXED))
         return -2;
 
+    /* Post-CAS generation re-check: detect cancel+reacquire race.
+     *
+     * Window: between the generation check above (line -14) and the CAS, a
+     * concurrent reqrep_cancel can free the slot (state FREE, gen++) and
+     * another reqrep_send_wait can re-acquire it (state ACQUIRED, gen++).
+     * The CAS then succeeds against the *new* owner's ACQUIRED state, leaving
+     * stale data in the wrong client's response slot.
+     *
+     * Mitigation: if the generation changed, force-release the slot so the new
+     * owner receives a stale-slot error rather than corrupt data.  There is
+     * still a narrow window between our CAS and this store where the new owner
+     * could observe READY and read the wrong data; a complete fix requires an
+     * atomic (state, generation) CAS, which needs a layout change.           */
+    if (__atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) != expected_gen) {
+        __atomic_store_n(&slot->state, RESP_FREE, __ATOMIC_RELEASE);
+        /* Wake any waiter that already observed READY so it exits promptly. */
+        if (__atomic_load_n(&slot->waiters, __ATOMIC_RELAXED) > 0)
+            syscall(SYS_futex, &slot->state, FUTEX_WAKE, INT_MAX, NULL, NULL, 0);
+        reqrep_wake_slot_waiters(h->hdr);
+        return -2;
+    }
+
     if (__atomic_load_n(&slot->waiters, __ATOMIC_RELAXED) > 0)
         syscall(SYS_futex, &slot->state, FUTEX_WAKE, 1, NULL, NULL, 0);
 
@@ -1490,6 +1512,15 @@ static int reqrep_int_reply(ReqRepHandle *h, uint64_t id, int64_t value) {
     if (!__atomic_compare_exchange_n(&slot->state, &expected_state, RESP_READY,
             0, __ATOMIC_RELEASE, __ATOMIC_RELAXED))
         return -2;
+
+    /* Same post-CAS generation re-check as reqrep_reply — see comment there. */
+    if (__atomic_load_n(&slot->generation, __ATOMIC_ACQUIRE) != expected_gen) {
+        __atomic_store_n(&slot->state, RESP_FREE, __ATOMIC_RELEASE);
+        if (__atomic_load_n(&slot->waiters, __ATOMIC_RELAXED) > 0)
+            syscall(SYS_futex, &slot->state, FUTEX_WAKE, INT_MAX, NULL, NULL, 0);
+        reqrep_wake_slot_waiters(h->hdr);
+        return -2;
+    }
 
     if (__atomic_load_n(&slot->waiters, __ATOMIC_RELAXED) > 0)
         syscall(SYS_futex, &slot->state, FUTEX_WAKE, 1, NULL, NULL, 0);
