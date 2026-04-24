@@ -1,7 +1,7 @@
 package Data::ReqRep::Shared;
 use strict;
 use warnings;
-our $VERSION = '0.01';
+our $VERSION = '0.03';
 
 require XSLoader;
 XSLoader::load('Data::ReqRep::Shared', $VERSION);
@@ -303,10 +303,34 @@ faster for simple 1:1 echo but require dedicated fd pairs per
 client-worker connection and cannot do MPMC without a broker (which
 halves throughput).
 
+
 =head1 SEE ALSO
 
-L<Data::Queue::Shared>, L<Data::PubSub::Shared>,
-L<Data::Buffer::Shared>, L<Data::HashMap::Shared>
+L<Data::Buffer::Shared> - typed shared array
+
+L<Data::HashMap::Shared> - concurrent hash table
+
+L<Data::Queue::Shared> - FIFO queue
+
+L<Data::PubSub::Shared> - publish-subscribe ring
+
+L<Data::Sync::Shared> - synchronization primitives
+
+L<Data::Pool::Shared> - fixed-size object pool
+
+L<Data::Stack::Shared> - LIFO stack
+
+L<Data::Deque::Shared> - double-ended queue
+
+L<Data::Log::Shared> - append-only log (WAL)
+
+L<Data::Heap::Shared> - priority queue
+
+L<Data::Graph::Shared> - directed weighted graph
+
+L<Data::BitSet::Shared> - shared bitset (lock-free per-bit ops)
+
+L<Data::RingBuffer::Shared> - fixed-size overwriting ring buffer
 
 =head1 AUTHOR
 
