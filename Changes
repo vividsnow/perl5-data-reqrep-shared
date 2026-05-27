@@ -1,3 +1,32 @@
+0.04  2026-05-27
+    - Fix ABA race in slot_acquire's per-slot recovery: a recoverer racing
+      a fresh free+acquire cycle could clobber a live owner because both
+      acquisitions present identical state (RESP_ACQUIRED). Now claims
+      exclusive recovery via owner_pid CAS dead->0 first (mirrors Pool's
+      recover_stale fix); state and owner_pid loads use ACQUIRE.
+    - Fix reply TOCTOU on generation: between gen check and state CAS, a
+      cancel + re-acquire could recycle the slot, letting reply stamp READY
+      onto a wrong owner's slot (which would then read the wrong data).
+      Now re-checks gen before CAS and recovers post-CAS by bumping gen +
+      resetting state.
+    - Fix size() snapshot wrap: reading tail before head could underflow
+      to a huge value if a consumer increments head between the loads.
+      Read head first; clamp result to 0 if tail < head.
+    - Plug mmap/fd leak when reqrep_setup_handle calloc fails in
+      create_int / create_int_memfd paths.
+    - Harden validate_header: reject files where resp_stride is too small
+      to hold full slot data area (prevents replies overflowing into next
+      slot's header on a crafted file).
+    - Fix slot_release ABA: two-step CAS (owner_pid mypid->0, then state
+      from_known->FREE) so a fresh owner's slot isn't blindly clobbered
+      when clear()/recovery race the release path (was incorrect for both
+      try_get's READY release and try_send-failure's ACQUIRED release).
+    - compute_layout: resp_stride was computed in uint32, which wrapped to
+      a tiny value for resp_data_max near UINT32_MAX (replies would then
+      overflow into neighboring slots). Compute in uint64 and reject if
+      stride exceeds uint32 range.
+
+
 0.03  2026-04-26
     - arena underflow guard; init under flock
     - strict fd validation; harden DESTROY
