@@ -10,3 +10,4 @@ Shared.o
 *.tar.gz
 MANIFEST.bak
 .claude/
+/Data-ReqRep-Shared-*/
