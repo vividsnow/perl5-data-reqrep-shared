@@ -16,6 +16,7 @@
         croak("Expected a %s object", classname); \
     ReqRepHandle *h = INT2PTR(ReqRepHandle*, SvIV(SvRV(sv))); \
     if (!h) croak("Attempted to use a destroyed %s object", classname); \
+    ReqRepHandle *h0 = h; PERL_UNUSED_VAR(h0); \
     sv_2mortal(SvREFCNT_inc(SvRV(sv)))
 
 /* Re-read the handle after a call that can run Perl code (tied/overloaded
@@ -26,7 +27,7 @@
  * between EXTRACT_HANDLE and the first use of h. */
 #define REEXTRACT_HANDLE(classname, sv) \
     h = INT2PTR(ReqRepHandle*, SvIV(SvRV(sv))); \
-    if (!h) croak("%s object destroyed during the call", classname)
+    if (h != h0) croak("%s object replaced or destroyed during the call", classname)
 
 #define MAKE_OBJ(class, ptr) \
     SV *ref = newRV_noinc(newSViv(PTR2IV(ptr))); \
