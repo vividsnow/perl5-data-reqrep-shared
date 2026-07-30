@@ -26,6 +26,8 @@
  * local `h` would dangle.  Used only where magic can actually intervene
  * between EXTRACT_HANDLE and the first use of h. */
 #define REEXTRACT_HANDLE(classname, sv) \
+    if (!SvROK(sv)) \
+        croak("%s object was replaced during the call", classname); \
     h = INT2PTR(ReqRepHandle*, SvIV(SvRV(sv))); \
     if (h != h0) croak("%s object replaced or destroyed during the call", classname)
 
