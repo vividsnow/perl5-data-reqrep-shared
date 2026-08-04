@@ -60,7 +60,7 @@ new(class, path, req_cap, resp_slots, resp_size, ...)
     if (req_cap > 0xFFFFFFFFU || resp_slots > 0xFFFFFFFFU || resp_size > 0xFFFFFFFFU) croak("Data::ReqRep::Shared->new: a capacity/size argument exceeds 2^32");
     ReqRepHandle *h = reqrep_create(p, (uint32_t)req_cap, (uint32_t)resp_slots,
                                      (uint32_t)resp_size, arena_cap, mode, errbuf);
-    if (!h) croak("Data::ReqRep::Shared->new: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared->new: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -80,7 +80,7 @@ new_memfd(class, name, req_cap, resp_slots, resp_size, ...)
     if (req_cap > 0xFFFFFFFFU || resp_slots > 0xFFFFFFFFU || resp_size > 0xFFFFFFFFU) croak("Data::ReqRep::Shared->new: a capacity/size argument exceeds 2^32");
     ReqRepHandle *h = reqrep_create_memfd(name, (uint32_t)req_cap, (uint32_t)resp_slots,
                                            (uint32_t)resp_size, arena_cap, errbuf);
-    if (!h) croak("Data::ReqRep::Shared->new_memfd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared->new_memfd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -93,7 +93,7 @@ new_from_fd(class, fd)
     char errbuf[REQREP_ERR_BUFLEN];
   CODE:
     ReqRepHandle *h = reqrep_open_fd(fd, REQREP_MODE_STR, errbuf);
-    if (!h) croak("Data::ReqRep::Shared->new_from_fd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared->new_from_fd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -571,7 +571,7 @@ new(class, path)
   CODE:
     const char *p = SvPV_nolen(path);
     ReqRepHandle *h = reqrep_open(p, REQREP_MODE_STR, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Client->new: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Client->new: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -584,7 +584,7 @@ new_from_fd(class, fd)
     char errbuf[REQREP_ERR_BUFLEN];
   CODE:
     ReqRepHandle *h = reqrep_open_fd(fd, REQREP_MODE_STR, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Client->new_from_fd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Client->new_from_fd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -986,7 +986,7 @@ new(class, path, req_cap, resp_slots, ...)
     mode_t mode = (items > 4 && (SvGETMAGIC(ST(4)), SvOK(ST(4)))) ? (mode_t)SvUV(ST(4)) : 0600;
     if (req_cap > 0xFFFFFFFFU || resp_slots > 0xFFFFFFFFU) croak("Data::ReqRep::Shared::Int->new: req_cap/resp_slots exceeds 2^32");
     ReqRepHandle *h = reqrep_create_int(p, (uint32_t)req_cap, (uint32_t)resp_slots, mode, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Int->new: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Int->new: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -1002,7 +1002,7 @@ new_memfd(class, name, req_cap, resp_slots)
   CODE:
     if (req_cap > 0xFFFFFFFFU || resp_slots > 0xFFFFFFFFU) croak("Data::ReqRep::Shared::Int->new_memfd: req_cap/resp_slots exceeds 2^32");
     ReqRepHandle *h = reqrep_create_int_memfd(name, (uint32_t)req_cap, (uint32_t)resp_slots, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Int->new_memfd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Int->new_memfd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -1015,7 +1015,7 @@ new_from_fd(class, fd)
     char errbuf[REQREP_ERR_BUFLEN];
   CODE:
     ReqRepHandle *h = reqrep_open_fd(fd, REQREP_MODE_INT, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Int->new_from_fd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Int->new_from_fd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -1309,7 +1309,7 @@ new(class, path)
   CODE:
     const char *p = SvPV_nolen(path);
     ReqRepHandle *h = reqrep_open(p, REQREP_MODE_INT, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Int::Client->new: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Int::Client->new: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL
@@ -1322,7 +1322,7 @@ new_from_fd(class, fd)
     char errbuf[REQREP_ERR_BUFLEN];
   CODE:
     ReqRepHandle *h = reqrep_open_fd(fd, REQREP_MODE_INT, errbuf);
-    if (!h) croak("Data::ReqRep::Shared::Int::Client->new_from_fd: %s", errbuf);
+    if (!h) croak("Data::ReqRep::Shared::Int::Client->new_from_fd: %s", errbuf[0] ? errbuf : "out of memory");
     MAKE_OBJ(class, h);
   OUTPUT:
     RETVAL

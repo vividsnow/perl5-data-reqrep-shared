@@ -524,7 +524,6 @@ static void reqrep_init_header(void *base, uint32_t req_cap, uint32_t resp_slots
                                 uint32_t resp_stride) {
     ReqRepHeader *hdr = (ReqRepHeader *)base;
     memset(hdr, 0, sizeof(ReqRepHeader));
-    hdr->magic         = REQREP_MAGIC;
     hdr->version       = REQREP_VERSION;
     hdr->mode          = REQREP_MODE_STR;
     hdr->req_cap       = req_cap;
@@ -542,6 +541,11 @@ static void reqrep_init_header(void *base, uint32_t req_cap, uint32_t resp_slots
         memset(rs, 0, sizeof(RespSlotHeader));
     }
 
+    /* Publish magic LAST, as a release store: it is the commit point, so a
+       creator killed before this store leaves magic==0 -- which the
+       crashed-creator recovery treats as an abandoned mid-init file and
+       recovers, instead of a magic-set-but-incomplete header that would brick. */
+    __atomic_store_n(&hdr->magic, REQREP_MAGIC, __ATOMIC_RELEASE);
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
@@ -602,6 +606,16 @@ static int reqrep_secure_open(const char *path, mode_t mode, char *errbuf) {
     }
     REQREP_ERR("open %s: create/attach kept racing", path);
     return -1;
+}
+
+/* True iff the whole mapped region is zero. A freshly ftruncate'd file (the only
+   thing an abandoned mid-init creator leaves) reads as all zeros, so this lets the
+   recovery re-init ONLY a provably-empty file and never a same-owner file that
+   merely starts with a zero word. Recovery is a cold path, so a byte scan is fine. */
+static inline int reqrep_region_is_zero(const void *p, size_t n) {
+    const unsigned char *b = (const unsigned char *)p;
+    for (size_t i = 0; i < n; i++) if (b[i]) return 0;
+    return 1;
 }
 
 static ReqRepHandle *reqrep_create(const char *path, uint32_t req_cap,
@@ -688,7 +702,7 @@ static ReqRepHandle *reqrep_create(const char *path, uint32_t req_cap,
                  * size, still uninitialized (magic==0), and owned by us -- a valid
                  * or foreign file fails this and still errors, never clobbered. */
                 if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
-                    && st.st_uid == geteuid()) {
+                    && st.st_uid == geteuid() && reqrep_region_is_zero(base, map_size)) {
                     if (fchmod(fd, mode) < 0) {
                         REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
                         munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
@@ -1461,7 +1475,6 @@ static void reqrep_int_init_header(void *base, uint32_t req_cap, uint32_t resp_s
                                     uint32_t resp_off, uint32_t resp_stride) {
     ReqRepHeader *hdr = (ReqRepHeader *)base;
     memset(hdr, 0, sizeof(ReqRepHeader));
-    hdr->magic         = REQREP_MAGIC;
     hdr->version       = REQREP_VERSION;
     hdr->mode          = REQREP_MODE_INT;
     hdr->req_cap       = req_cap;
@@ -1483,6 +1496,11 @@ static void reqrep_int_init_header(void *base, uint32_t req_cap, uint32_t resp_s
         memset(rs, 0, sizeof(RespSlotHeader));
     }
 
+    /* Publish magic LAST, as a release store: it is the commit point, so a
+       creator killed before this store leaves magic==0 -- which the
+       crashed-creator recovery treats as an abandoned mid-init file and
+       recovers, instead of a magic-set-but-incomplete header that would brick. */
+    __atomic_store_n(&hdr->magic, REQREP_MAGIC, __ATOMIC_RELEASE);
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
 
@@ -1540,7 +1558,7 @@ static ReqRepHandle *reqrep_create_int(const char *path, uint32_t req_cap,
                  * valid or foreign file fails this and still errors, never
                  * clobbered. */
                 if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
-                    && st.st_uid == geteuid()) {
+                    && st.st_uid == geteuid() && reqrep_region_is_zero(base, map_size)) {
                     if (fchmod(fd, mode) < 0) {
                         REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
                         munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
