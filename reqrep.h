@@ -681,6 +681,27 @@ static ReqRepHandle *reqrep_create(const char *path, uint32_t req_cap,
 
         if (!is_new) {
             if (!reqrep_validate_header((ReqRepHeader *)base, (size_t)st.st_size, REQREP_MODE_STR)) {
+                /* Recover an abandoned mid-init file: a creator killed between the
+                 * ftruncate and reqrep_init_header below leaves a full-size, all-zero
+                 * (magic==0) file that would otherwise brick every future open of
+                 * this path.  Re-initialize it, but ONLY when it is exactly our
+                 * size, still uninitialized (magic==0), and owned by us -- a valid
+                 * or foreign file fails this and still errors, never clobbered. */
+                if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
+                    && st.st_uid == geteuid()) {
+                    if (fchmod(fd, mode) < 0) {
+                        REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
+                        munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
+                    }
+                    memset(base, 0, map_size);   /* start from a provably empty structure */
+                    reqrep_init_header(base, req_cap, resp_slots_n, resp_data_max, total_size,
+                                        req_slots_off, req_arena_off, req_arena_cap,
+                                        resp_off, resp_stride);
+                    flock(fd, LOCK_UN); close(fd);
+                    ReqRepHandle *h = reqrep_setup_handle(base, map_size, path, -1);
+                    if (!h) { munmap(base, map_size); return NULL; }
+                    return h;
+                }
                 REQREP_ERR("%s: invalid or incompatible reqrep file", path);
                 munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
             }
@@ -1511,6 +1532,27 @@ static ReqRepHandle *reqrep_create_int(const char *path, uint32_t req_cap,
         if (base == MAP_FAILED) { REQREP_ERR("mmap: %s", strerror(errno)); flock(fd, LOCK_UN); close(fd); return NULL; }
         if (!is_new) {
             if (!reqrep_validate_header((ReqRepHeader *)base, map_size, REQREP_MODE_INT)) {
+                /* Recover an abandoned mid-init file: a creator killed between the
+                 * ftruncate and reqrep_int_init_header below leaves a full-size,
+                 * all-zero (magic==0) file that would otherwise brick every future
+                 * open of this path.  Re-initialize it, but ONLY when it is exactly
+                 * our size, still uninitialized (magic==0), and owned by us -- a
+                 * valid or foreign file fails this and still errors, never
+                 * clobbered. */
+                if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
+                    && st.st_uid == geteuid()) {
+                    if (fchmod(fd, mode) < 0) {
+                        REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
+                        munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
+                    }
+                    memset(base, 0, map_size);   /* start from a provably empty structure */
+                    reqrep_int_init_header(base, req_cap, resp_slots_n, total_size,
+                                            req_slots_off, resp_off, resp_stride);
+                    flock(fd, LOCK_UN); close(fd);
+                    ReqRepHandle *h = reqrep_setup_handle(base, map_size, path, -1);
+                    if (!h) { munmap(base, map_size); return NULL; }
+                    return h;
+                }
                 REQREP_ERR("%s: invalid or incompatible", path); munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
             }
             flock(fd, LOCK_UN); close(fd);

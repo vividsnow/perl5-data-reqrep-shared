@@ -30,6 +30,7 @@ t/03_stress.t
 t/04_batch.t
 t/05_errors.t
 t/06_int.t
+t/07_recover.t
 t/pod_synopsis.t
 t/version_check.t
 typemap
