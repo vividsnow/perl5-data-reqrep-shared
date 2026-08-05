@@ -542,9 +542,10 @@ static void reqrep_init_header(void *base, uint32_t req_cap, uint32_t resp_slots
     }
 
     /* Publish magic LAST, as a release store: it is the commit point, so a
-       creator killed before this store leaves magic==0 -- which the
-       crashed-creator recovery treats as an abandoned mid-init file and
-       recovers, instead of a magic-set-but-incomplete header that would brick. */
+       creator killed before it leaves magic==0 and the file is never mistaken
+       for a valid one.  Recovery re-initializes such a file only while it is
+       still all-zero (a kill during the ftruncate or the zeroing above); a kill
+       during the few field stores leaves a file to remove by hand. */
     __atomic_store_n(&hdr->magic, REQREP_MAGIC, __ATOMIC_RELEASE);
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
@@ -715,7 +716,11 @@ static ReqRepHandle *reqrep_create(const char *path, uint32_t req_cap,
                     if (!h) { munmap(base, map_size); return NULL; }
                     return h;
                 }
-                REQREP_ERR("%s: invalid or incompatible reqrep file", path);
+                if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
+                    && st.st_uid == geteuid())
+                    REQREP_ERR("%s: incomplete reqrep file left by an interrupted create; remove it and retry", path);
+                else
+                    REQREP_ERR("%s: invalid or incompatible reqrep file", path);
                 munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
             }
             flock(fd, LOCK_UN);
@@ -1496,9 +1501,10 @@ static void reqrep_int_init_header(void *base, uint32_t req_cap, uint32_t resp_s
     }
 
     /* Publish magic LAST, as a release store: it is the commit point, so a
-       creator killed before this store leaves magic==0 -- which the
-       crashed-creator recovery treats as an abandoned mid-init file and
-       recovers, instead of a magic-set-but-incomplete header that would brick. */
+       creator killed before it leaves magic==0 and the file is never mistaken
+       for a valid one.  Recovery re-initializes such a file only while it is
+       still all-zero (a kill during the ftruncate or the zeroing above); a kill
+       during the few field stores leaves a file to remove by hand. */
     __atomic_store_n(&hdr->magic, REQREP_MAGIC, __ATOMIC_RELEASE);
     __atomic_thread_fence(__ATOMIC_SEQ_CST);
 }
@@ -1569,7 +1575,12 @@ static ReqRepHandle *reqrep_create_int(const char *path, uint32_t req_cap,
                     if (!h) { munmap(base, map_size); return NULL; }
                     return h;
                 }
-                REQREP_ERR("%s: invalid or incompatible", path); munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
+                if (((ReqRepHeader *)base)->magic == 0 && (uint64_t)st.st_size == total_size
+                    && st.st_uid == geteuid())
+                    REQREP_ERR("%s: incomplete reqrep file left by an interrupted create; remove it and retry", path);
+                else
+                    REQREP_ERR("%s: invalid or incompatible", path);
+                munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
             }
             flock(fd, LOCK_UN); close(fd);
             ReqRepHandle *h = reqrep_setup_handle(base, map_size, path, -1);
