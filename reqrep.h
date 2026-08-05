@@ -707,7 +707,6 @@ static ReqRepHandle *reqrep_create(const char *path, uint32_t req_cap,
                         REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
                         munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
                     }
-                    memset(base, 0, map_size);   /* start from a provably empty structure */
                     reqrep_init_header(base, req_cap, resp_slots_n, resp_data_max, total_size,
                                         req_slots_off, req_arena_off, req_arena_cap,
                                         resp_off, resp_stride);
@@ -1563,7 +1562,6 @@ static ReqRepHandle *reqrep_create_int(const char *path, uint32_t req_cap,
                         REQREP_ERR("%s: fchmod: %s", path, strerror(errno));
                         munmap(base, map_size); flock(fd, LOCK_UN); close(fd); return NULL;
                     }
-                    memset(base, 0, map_size);   /* start from a provably empty structure */
                     reqrep_int_init_header(base, req_cap, resp_slots_n, total_size,
                                             req_slots_off, resp_off, resp_stride);
                     flock(fd, LOCK_UN); close(fd);
