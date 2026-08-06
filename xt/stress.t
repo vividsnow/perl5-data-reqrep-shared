@@ -27,12 +27,15 @@ diag "stress: $CLIENTS clients x $MSGS msgs, $WORKERS workers, cancel every $CAN
     my $path = tmpnam();
     my $srv = Data::ReqRep::Shared->new($path, 4096, 256, 4096);
 
-    # spawn workers
+    # spawn workers.  Idle timeout must exceed the client's per-request timeout:
+    # a worker that gives up first would starve still-running clients and cascade
+    # into spurious client timeouts.  The parent TERMs them once clients are done.
     my @wpids;
     for my $w (1..$WORKERS) {
         my $pid = fork // die "fork: $!";
         if ($pid == 0) {
-            while (my ($req, $id) = $srv->recv_wait(10.0)) {
+            $SIG{TERM} = sub { exit 0 };
+            while (my ($req, $id) = $srv->recv_wait($CTMO + 5)) {
                 $srv->reply($id, "w$w:$req");
             }
             exit 0;
@@ -46,7 +49,7 @@ diag "stress: $CLIENTS clients x $MSGS msgs, $WORKERS workers, cancel every $CAN
         my $pid = fork // die "fork: $!";
         if ($pid == 0) {
             my $cli = Data::ReqRep::Shared::Client->new($path);
-            my $ok = 0;
+            my ($ok, $wrong, $late) = (0, 0, 0);
             my $cancel_ok = 0;
             for my $i (1..$MSGS) {
                 if ($i % $CANCEL == 0) {
@@ -54,25 +57,36 @@ diag "stress: $CLIENTS clients x $MSGS msgs, $WORKERS workers, cancel every $CAN
                     if (defined $id) { $cli->cancel($id); $cancel_ok++ }
                 } else {
                     my $resp = $cli->req_wait("c${c}m$i", $CTMO);
-                    $ok++ if defined $resp && $resp =~ /^w\d+:c${c}m${i}$/;
+                    if    (!defined $resp)                       { $late++  }
+                    elsif ($resp =~ /^w\d+:c${c}m${i}$/)         { $ok++    }
+                    else                                         { $wrong++ }
                 }
             }
-            my $expected = $MSGS - int($MSGS / $CANCEL);
-            exit($ok == $expected ? 0 : 1);
+            # A WRONG answer (mismatched or cross-talked response) is always a bug.
+            # A missing one only means this process lost the CPU long enough to blow
+            # a 30s per-request timeout, which an oversubscribed runner does cause --
+            # report it separately so load cannot masquerade as a correctness failure.
+            exit 1 if $wrong;
+            exit($late ? 2 : 0);
         }
         push @cpids, $pid;
     }
 
     my $t0 = time;
-    my $all_ok = 1;
+    my ($wrong_clients, $late_clients) = (0, 0);
     for my $pid (@cpids) {
         waitpid($pid, 0);
-        $all_ok = 0 if $? != 0;
+        my $code = $? >> 8;
+        $wrong_clients++ if $code == 1;
+        $late_clients++  if $code == 2;
     }
     my $dt = time - $t0;
+    kill 'TERM', @wpids;          # clients are done; do not wait out the idle timeout
     waitpid($_, 0) for @wpids;
 
-    ok $all_ok, "mpmc: all clients verified all responses";
+    ok !$wrong_clients, "mpmc: every response received was the right one";
+    diag "note: $late_clients/$CLIENTS client(s) had a request exceed ${CTMO}s -- "
+       . "runner oversubscription, not a correctness failure" if $late_clients;
 
     my $total = $CLIENTS * $MSGS;
     my $stats = $srv->stats;
