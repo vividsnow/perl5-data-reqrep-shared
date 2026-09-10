@@ -14,7 +14,7 @@ jobs:
         perl: ['5.40', '5.38', '5.36', '5.34', '5.32', '5.30', '5.28', '5.26', '5.24', '5.22']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Perl ${{ matrix.perl }}
         uses: shogo82148/actions-setup-perl@v1
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     container: alpine:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install deps
         run: |
@@ -51,7 +51,7 @@ jobs:
   test-asan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.40'
@@ -67,18 +67,42 @@ jobs:
     runs-on: ubuntu-24.04-arm
     name: ARM64 / Linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.40'
-      - run: cpanm -n Devel::PPPort
+      - run: cpanm -n Devel::PPPort BSD::Resource Time::HiRes
       - run: perl Makefile.PL && make && make test
+      - name: ARM64 Extended Tests (xt/)
+        run: AUTHOR_TESTING=1 prove -b -j2 xt/*.t
+        env:
+          AUTHOR_TESTING: 1
+
+  test-arm-qemu:
+    runs-on: ubuntu-latest
+    name: ARM64 / Linux (QEMU Alpine)
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: linux/arm64
+      - name: Build and test under ARM64 Alpine
+        run: |
+          docker run --rm --platform linux/arm64 -v "$PWD":/work -w /work alpine:latest sh -c "
+            apk add --no-cache perl perl-dev make gcc musl-dev linux-headers wget &&
+            wget -qO- https://cpanmin.us | perl - App::cpanminus &&
+            cpanm -n Devel::PPPort &&
+            perl Makefile.PL &&
+            make &&
+            make test
+          "
 
   test-ubsan:
     runs-on: ubuntu-latest
     name: UBSan
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.40'
@@ -94,7 +118,7 @@ jobs:
     runs-on: ubuntu-latest
     name: AUTHOR_TESTING (xt/)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.40'
@@ -108,7 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     name: valgrind
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: shogo82148/actions-setup-perl@v1
         with:
           perl-version: '5.40'
