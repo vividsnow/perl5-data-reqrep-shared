@@ -35,6 +35,7 @@ print "pending: ", $cli->pending, "\n";
 for my $item (@ids) {
     my ($i, $id) = @$item;
     my $resp = $cli->get_wait($id, 5.0);
+    $cli->cancel($id) unless defined $resp;
     printf "task%-2d -> %s\n", $i, $resp // "timeout";
 }
 

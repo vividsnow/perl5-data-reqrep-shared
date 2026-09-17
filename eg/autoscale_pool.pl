@@ -64,13 +64,13 @@ if ($cli_pid == 0) {
     print "--- phase 1: light (10 sequential) ---\n";
     for (1..10) {
         my $id = $cli->send_wait_notify("light-$_", 5.0);
-        $cli->get_wait($id, 5.0) if defined $id;
+        $cli->get_wait($id, 5.0) // $cli->cancel($id) if defined $id;
     }
 
     print "--- phase 2: burst (50 pipelined) ---\n";
     my @ids;
     push @ids, $cli->send_wait_notify("burst-$_", 5.0) for 1..50;
-    for my $id (@ids) { $cli->get_wait($id, 5.0) if defined $id }
+    for my $id (@ids) { $cli->get_wait($id, 5.0) // $cli->cancel($id) if defined $id }
 
     print "--- phase 3: quiet 3s (workers shrink) ---\n";
     select(undef, undef, undef, 3.0);
@@ -78,7 +78,7 @@ if ($cli_pid == 0) {
     print "--- phase 4: resume (10 sequential) ---\n";
     for (1..10) {
         my $id = $cli->send_wait_notify("resume-$_", 5.0);
-        $cli->get_wait($id, 5.0) if defined $id;
+        $cli->get_wait($id, 5.0) // $cli->cancel($id) if defined $id;
     }
 
     print "--- done ---\n";
@@ -94,4 +94,7 @@ my $cli_w = EV::child $cli_pid, 0, sub {
 };
 
 EV::run;
+my @left = keys %workers;
+kill TERM => @left;
+waitpid $_, 0 for @left;
 $srv->unlink;

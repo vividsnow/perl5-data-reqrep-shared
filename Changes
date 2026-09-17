@@ -1,5 +1,12 @@
 Revision history for Data-ReqRep-Shared
 
+0.09      2026-09-16
+          - Incompatible on-disk format: recreate existing files.
+          - Survive processes that die, stop or reuse PIDs mid-request.
+          - Only the receiving process may reply; destroy cancels requests.
+          - New ready_fd and ready for per-client reply notification.
+          - Stricter argument checks and fewer system calls per request.
+
 0.08      2026-09-15
           - Incompatible on-disk format: recreate existing files.
           - Refuse attaching across PID namespaces or boots (see CONTAINERS).

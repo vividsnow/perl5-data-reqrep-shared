@@ -54,18 +54,20 @@ my $cli = Data::ReqRep::Shared::Client->new($path);
         select(undef, undef, undef, 0.05);
         my $child_cli = Data::ReqRep::Shared::Client->new($path);
         $child_cli->send("batch$_") for 1..4;
-        exit 0;
+        require POSIX;
+        POSIX::_exit(0);
     }
 
     my @items = $srv->recv_wait_multi(10, 30.0);
     ok scalar @items >= 2, 'recv_wait_multi: got at least 1 pair';
     ok scalar @items <= 8, 'recv_wait_multi: got at most 4 pairs';
 
-    # reply to all received
+    my ($pairs, $accepted) = (@items / 2, 0);
     while (@items) {
         my ($data, $id) = splice @items, 0, 2;
-        $srv->reply($id, "ok");
+        $accepted++ if $srv->reply($id, "ok");
     }
+    is $accepted, $pairs, 'recv_wait_multi: every request received can be replied to';
     # drain any remaining
     while (my ($r, $ri) = $srv->recv) { $srv->reply($ri, "ok") }
 
@@ -112,8 +114,7 @@ my $cli = Data::ReqRep::Shared::Client->new($path);
     }
     # reply to remaining 2
     while (my ($r, $ri) = $srv->recv) { $srv->reply($ri, "ok") }
-    # consume all responses to release slots
-    $cli->get($_) for @ids_m;
+    is scalar(grep { ($cli->get($_) // '') eq 'ok' } @ids_m), 5, 'drain(3): every request drained or received gets its reply';
 }
 
 # send_notify + send_wait_notify

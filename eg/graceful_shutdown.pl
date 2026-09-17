@@ -1,11 +1,12 @@
 #!/usr/bin/env perl
-# Graceful shutdown: server drains in-flight requests on SIGTERM
+# Graceful shutdown: on SIGTERM the server stops taking new work and answers
+# the requests already queued
 use strict;
 use warnings;
 use Data::ReqRep::Shared;
 use Data::ReqRep::Shared::Client;
 use File::Temp 'tmpnam';
-use POSIX ();
+use Time::HiRes 'sleep';
 
 my $path = tmpnam();
 my $srv = Data::ReqRep::Shared->new($path, 256, 32, 4096);
@@ -17,35 +18,32 @@ if ($srv_pid == 0) {
 
     while (!$shutdown) {
         my ($req, $id) = $srv->recv_wait(0.5);
-        next unless defined $req;
+        next unless defined $id;
+        sleep 0.05;    # the work
         $srv->reply($id, "ok:$req");
     }
 
-    # Drain remaining requests before exit
     my $drained = 0;
     while (my ($req, $id) = $srv->recv) {
-        $srv->reply($id, "draining:$req");
+        $srv->reply($id, "drained:$req");
         $drained++;
     }
-    print "server: drained $drained in-flight requests\n";
+    print "server: drained $drained queued requests\n";
     exit 0;
 }
 
 my $cli = Data::ReqRep::Shared::Client->new($path);
 
-# Send some requests
-for my $i (1..10) {
-    my $resp = $cli->req("job$i");
-    print "job$i -> $resp\n";
-}
-
-# Signal shutdown, then send a few more that should be drained
+# Queue ten jobs, then ask the server to stop while it is still working
+my @jobs = map { [$_, $cli->send("job$_")] } 1 .. 10;
+sleep 0.12;
 kill 'TERM', $srv_pid;
-select(undef, undef, undef, 0.05);  # let signal deliver
 
-for my $i (11..13) {
-    my $resp = $cli->req_wait("job$i", 2.0);
-    printf "job$i -> %s\n", $resp // "no response (server shutting down)";
+for my $job (@jobs) {
+    my ($n, $id) = @$job;
+    my $resp = $cli->get_wait($id, 2.0);
+    $cli->cancel($id) unless defined $resp;
+    printf "job%d -> %s\n", $n, $resp // 'no response';
 }
 
 waitpid $srv_pid, 0;

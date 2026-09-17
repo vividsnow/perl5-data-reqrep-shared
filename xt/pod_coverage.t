@@ -21,6 +21,7 @@ my $api = qr/^(
   | reply_eventfd | reply_eventfd_set | reply_eventfd_consume
   | reply_fileno  | reply_notify
   | req_eventfd_set | req_fileno
+  | ready_fd | ready
 )$/x;
 
 Test::Pod::Coverage::pod_coverage_ok('Data::ReqRep::Shared',

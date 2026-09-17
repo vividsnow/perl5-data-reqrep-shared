@@ -43,7 +43,7 @@ for (my $sent = 0; $sent < $TOTAL; $sent += $BATCH) {
     }
     # collect batch
     for my $id (@ids) {
-        $cli->get_wait($id, 5.0);
+        $cli->get_wait($id, 5.0) // $cli->cancel($id);
     }
 }
 
