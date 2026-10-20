@@ -1,5 +1,9 @@
 Revision history for Data-ReqRep-Shared
 
+0.10  2026-10-16
+    - Protect replacement channel files from older handles' unlink calls.
+    - Reject malformed layouts consistently.
+
 0.09      2026-09-25
           - Incompatible on-disk format: recreate existing files.
           - Survive processes that die, stop, exec or reuse PIDs mid-request.

@@ -74,7 +74,7 @@ jobs:
       - run: cpanm -n Devel::PPPort BSD::Resource Time::HiRes
       - run: perl Makefile.PL && make && make test
       - name: ARM64 Extended Tests (xt/)
-        run: AUTHOR_TESTING=1 prove -b -j2 xt/*.t
+        run: AUTHOR_TESTING=1 prove -b xt/*.t
         env:
           AUTHOR_TESTING: 1
 
@@ -124,7 +124,7 @@ jobs:
           perl-version: '5.40'
       - run: cpanm -n Devel::PPPort BSD::Resource Time::HiRes
       - run: perl Makefile.PL && make
-      - run: AUTHOR_TESTING=1 prove -b -j2 xt/*.t
+      - run: AUTHOR_TESTING=1 prove -b xt/*.t
         env:
           AUTHOR_TESTING: 1
 
